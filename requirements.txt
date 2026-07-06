@@ -1,0 +1,75 @@
+
+# RAG Framework
+
+langchain
+langchain-core
+langchain-community
+
+# LLM Providers
+# Install only providers you actually use
+
+langchain-openai
+openai
+
+langchain-mistralai
+mistralai
+
+# Vector Database
+
+chromadb
+
+# Embedding Models
+
+sentence-transformers
+
+
+# PDF / Document Processing
+
+pypdf
+pymupdf
+unstructured
+
+
+# HTML / Web Document Processing
+# Optional for future URL ingestion
+
+beautifulsoup4
+lxml
+
+# Text Processing / Tokenization
+
+tiktoken
+
+
+# Environment Variables
+
+python-dotenv
+
+# Backend API
+
+fastapi
+uvicorn[standard]
+python-multipart
+
+
+# Data Validation / Settings
+
+pydantic
+pydantic-settings
+
+
+# Frontend
+
+streamlit
+
+
+# Utilities
+
+tqdm
+requests
+
+
+# Testing
+
+pytest
+httpx
