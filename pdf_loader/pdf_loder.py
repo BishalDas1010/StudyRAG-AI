@@ -1,21 +1,10 @@
+from PIL import Image
+import pytesseract
 
-from digital_pipeline import Pipeline
-if __name__ == "__main__":
+image = Image.open(
+    "/home/vishal/StudyRAG/pdf_loader/image.png"
+)
 
-    path = "cs181-textbook.pdf"
+text = pytesseract.image_to_string(image)
 
-    d1 = Pipeline(path)
-
-    if d1.detect_pdf_type():
-
-        chunks = d1.pdf_loader()
-
-        embedding_model = d1.embedding()
-
-        vector_store = d1.chroma_db(
-            embedding_model,
-            chunks
-        )
-
-    else:
-        print("OCR pipeline required")
+print(text)

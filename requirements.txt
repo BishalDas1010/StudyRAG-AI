@@ -76,3 +76,4 @@ httpx
 
 
 pytesseract
+pdf2image
