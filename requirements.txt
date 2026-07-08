@@ -76,4 +76,5 @@ httpx
 
 
 pytesseract
+pillow
 pdf2image

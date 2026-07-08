@@ -36,6 +36,8 @@ class Pipeline:
     def pdf_loader(self):
         loader = PyMuPDFLoader(self.path)
         docs = loader.load()
+        if not docs:
+            print("SOme thing worng here so the docss is empty")
 
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
@@ -58,17 +60,41 @@ class Pipeline:
         )
 
         return embedding_model
-
+    
 
     def chroma_db(self, embedding_model, docs):
+
+    # Prevent empty document insertion
+        if not docs:
+            print(" No documents found. Skipping ChromaDB insertion.")
+            return None
+
+        print(f"Adding {len(docs)} documents to ChromaDB")
+
         vector_store = Chroma(
-            collection_name="study_rag",
+            collection_name="pdf_collection",
             embedding_function=embedding_model,
-            persist_directory="./chroma_study_db"
+            persist_directory="./chroma_db"
         )
 
         vector_store.add_documents(docs)
 
-        print("Documents added and stored successfully")
+        print(" Documents successfully added to ChromaDB")
 
         return vector_store
+
+
+    # def chroma_db(self, embedding_model, docs):
+    #     vector_store = Chroma(
+    #         collection_name="study_rag",
+    #         embedding_function=embedding_model,
+    #         persist_directory="./chroma_study_db"
+    #     )
+
+    
+
+        # vector_store.add_documents(docs)
+
+        # print("Documents added and stored successfully")
+
+        # return vector_store

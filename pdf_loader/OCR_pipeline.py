@@ -6,6 +6,11 @@ from pdf2image import convert_from_path
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 
 
 class Ocr:
@@ -142,22 +147,50 @@ class Ocr_main:
             print("Unsupported file")
 
             return []
+    def Embadding_model(self):
+        embedding_model = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={
+                "device": "cuda"
+            }
+        )
 
+        return embedding_model
+    def chroma_db_ocr(self, embedding_model, docs):
 
-if __name__ == "__main__":
+    # Prevent empty document insertion
+        if not docs:
+            print(" No documents found. Skipping ChromaDB insertion.")
+            return None
 
-    path = "/home/vishal/StudyRAG/pdf_loader/image.png"
+        print(f"Adding {len(docs)} documents to ChromaDB")
 
-    pipeline = Ocr_main(path)
+        vector_store = Chroma(
+            collection_name="image_collection",
+            embedding_function=embedding_model,
+            persist_directory="./chroma_db_images"
+        )
 
-    documents = pipeline.main()
+        vector_store.add_documents(docs)
 
-    for doc in documents:
+        print(" Documents successfully added to ChromaDB")
 
-        print("\nMetadata:")
-        print(doc.metadata)
+        return vector_store
 
-        print("-" * 50)
+# if __name__ == "__main__":
 
-        print("Content:")
-        print(doc.page_content)
+#     path = "/home/vishal/StudyRAG/pdf_loader/image.png"
+
+#     pipeline = Ocr_main(path)
+
+#     documents = pipeline.main()
+
+#     for doc in documents:
+
+#         print("\nMetadata:")
+#         print(doc.metadata)
+
+#         print("-" * 50)
+
+#         print("Content:")
+#         print(doc.page_content)

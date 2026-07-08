@@ -4,7 +4,7 @@ from OCR_pipeline import Ocr_main
 
 if __name__ == "__main__":
 
-    path = "cs181-textbook.pdf"
+    path = "pdf_loader/image.png"
 
     # Create pipeline objects
     digital_pipeline = Pipeline(path)
@@ -12,23 +12,23 @@ if __name__ == "__main__":
 
     # Detect PDF type
     is_scanned = digital_pipeline.detect_pdf_type()
+    print(is_scanned)
+    
+    if is_scanned == False:
+        ocr_text = ocr_pipeline.main()
+        if not ocr_text:
+            print("ocr_pipeline_faild")
+        else:
+            print("pipeline working")
+        model = ocr_pipeline.Embadding_model()
+        ocr_pipeline.chroma_db_ocr(model,ocr_text)
+        print("data store in chroma db")
+        
 
-    if is_scanned:
-
-        print("Scanned PDF detected")
-
-        chunks_pdf_ocr = ocr_pipeline.main()
-
-        print(chunks_pdf_ocr)
+        
 
     else:
-
-        print("Digital PDF detected")
-
-        chunks = digital_pipeline.pdf_loader()
-
-        print(chunks)
-        #model and chunk store in chDB
-        model =digital_pipeline.embedding()
-        digital_pipeline.chroma_db(model,chunks)
-
+        digital_pdf_loader = digital_pipeline.pdf_loader()
+        digital_pdf_embadding  = digital_pipeline.embedding()
+        digital_pipeline.chroma_db(embedding_model=digital_pdf_embadding, docs=digital_pdf_loader)
+        
