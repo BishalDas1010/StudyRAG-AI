@@ -1,5 +1,6 @@
 from digital_pipeline import Pipeline
 from OCR_pipeline import Ocr_main
+from Similarity_search import Similarity_search
 
 
 if __name__ == "__main__":
@@ -21,8 +22,11 @@ if __name__ == "__main__":
         else:
             print("pipeline working")
         model = ocr_pipeline.Embadding_model()
-        ocr_pipeline.chroma_db_ocr(model,ocr_text)
+        vactor_stor_db_ocr = ocr_pipeline.chroma_db_ocr(model,ocr_text)
         print("data store in chroma db")
+
+        print("retriver ")
+        retiver = Similarity_search(vactor_stor_db_ocr,RETRIEVER_K =5,MMR_LAMBDA =1)
         
 
         
