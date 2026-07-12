@@ -10,6 +10,8 @@ from OCR_pipeline import Ocr_main
 from Similarity import Similarity_search
 from langchain_mistralai import ChatMistralAI
 from dotenv import load_dotenv
+from RAGGenerator import RAGGenerator
+
 
 load_dotenv()
     
@@ -57,7 +59,11 @@ if __name__ == "__main__":
             llm=llm,
             query=Query
             )
-
+        
+        llm = ChatMistralAI(
+            model="mistral-large-latest",
+            temperature=0.3
+        )
         for chunk ,doc in enumerate(retriver_result):
             print("+"*80)
             print(f"Result{1+chunk}")
@@ -85,7 +91,8 @@ if __name__ == "__main__":
 
 
         llm = ChatMistralAI(
-            model = "mistral-large-latest"
+            model="mistral-large-latest",
+            temperature=0.3
         )
 
         retriver_result = search.contextualCompressionRetriever(llm=llm,query="what is ML")
@@ -95,5 +102,16 @@ if __name__ == "__main__":
             print(f"Result {i + 1}")
             print(doc.metadata)
             print(doc.page_content[:300])   # first 300 characters
+
+
+        #LL
+        genarator =RAGGenerator(llm)
+        ans = genarator.generate(
+            retriver_result,
+            "what is ML"
+        )
+        print(ans.content)
+
+
 
         
