@@ -1,5 +1,5 @@
 myenv/
-api_key/
+api_key/API_KEY.py
 IMPORTANT.md
 __pycache__
 .env
