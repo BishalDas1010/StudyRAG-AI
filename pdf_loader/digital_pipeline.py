@@ -40,8 +40,8 @@ class Pipeline:
             print("SOme thing worng here so the docss is empty")
 
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50
+            chunk_size=1000,
+            chunk_overlap=200
         )
 
         chunks = splitter.split_documents(docs)

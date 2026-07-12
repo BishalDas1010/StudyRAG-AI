@@ -1,12 +1,24 @@
+from pathlib import Path
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from digital_pipeline import Pipeline
 from OCR_pipeline import Ocr_main
-from Similarity_search import Similarity_search
+from Similarity import Similarity_search
+from langchain_mistralai import ChatMistralAI
+from dotenv import load_dotenv
 
+load_dotenv()
+    
 
 if __name__ == "__main__":
 
-    path = "pdf_loader/image.png"
+    #path = "pdf_loader/image.png"
 
+    path ="cs181-textbook.pdf"
     # Create pipeline objects
     digital_pipeline = Pipeline(path)
     ocr_pipeline = Ocr_main(path)
@@ -26,13 +38,62 @@ if __name__ == "__main__":
         print("data store in chroma db")
 
         print("retriver ")
-        retiver = Similarity_search(vactor_stor_db_ocr,RETRIEVER_K =5,MMR_LAMBDA =1)
-        
+
+
+        search= Similarity_search(
+            vector_db=vactor_stor_db_ocr,
+            query="what is Machine learning",
+            RETRIEVER_K=5,
+            MMR_LAMBDA=0.5,
+        )
+        #compression Search 
+        #LLm
+        llm = ChatMistralAI(
+            model = "mistral-large-latest"
+        )
+
+        Query ="What is Machine Learning?"
+        retriver_result = search.contextualCompressionRetriever(
+            llm=llm,
+            query=Query
+            )
+
+        for chunk ,doc in enumerate(retriver_result):
+            print("+"*80)
+            print(f"Result{1+chunk}")
+            print(" ")
+            print(doc.page_content)
 
         
 
     else:
         digital_pdf_loader = digital_pipeline.pdf_loader()
         digital_pdf_embadding  = digital_pipeline.embedding()
-        digital_pipeline.chroma_db(embedding_model=digital_pdf_embadding, docs=digital_pdf_loader)
+        vactor_stor_db_PDF= digital_pipeline.chroma_db(embedding_model=digital_pdf_embadding, docs=digital_pdf_loader)
+        print("retriver ")
+
+        print("retriver ")
+
+
+        search = Similarity_search(
+            vactor_stor_db_PDF,
+            query="what is Machine learning",
+            RETRIEVER_K=5,
+            MMR_LAMBDA=0.5,
+        )
+
+
+
+        llm = ChatMistralAI(
+            model = "mistral-large-latest"
+        )
+
+        retriver_result = search.contextualCompressionRetriever(llm=llm,query="what is ML")
+
+        for i, doc in enumerate(retriver_result):
+            print("=" * 80)
+            print(f"Result {i + 1}")
+            print(doc.metadata)
+            print(doc.page_content[:300])   # first 300 characters
+
         
