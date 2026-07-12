@@ -1,7 +1,10 @@
 myenv/
 api_key/
 IMPORTANT.md
-__pycache__
+__pycache__/
 .env
 API_KEY.py
-chroma_db
+chroma_db/
+*.pyc
+*.pyo
+*.pyd
