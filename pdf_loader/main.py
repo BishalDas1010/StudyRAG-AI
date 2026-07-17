@@ -11,107 +11,65 @@ from Similarity import Similarity_search
 from langchain_mistralai import ChatMistralAI
 from dotenv import load_dotenv
 from RAGGenerator import RAGGenerator
-
+import answer
 
 load_dotenv()
-    
-
 if __name__ == "__main__":
-
-    #path = "pdf_loader/image.png"
-
-    path ="cs181-textbook.pdf"
-    # Create pipeline objects
+    path = "cs181-textbook.pdf"
+    
+    # 1. Initialise pipelines
     digital_pipeline = Pipeline(path)
     ocr_pipeline = Ocr_main(path)
-
-    # Detect PDF type
-    is_scanned = digital_pipeline.detect_pdf_type()
-    print(is_scanned)
     
+    # 2. Detect PDF type
+    is_scanned = digital_pipeline.detect_pdf_type()
+    print(f"Scanned: {is_scanned}")
+    
+    # 3. Build vector store and retriever
     if is_scanned == False:
+        # OCR branch
         ocr_text = ocr_pipeline.main()
         if not ocr_text:
-            print("ocr_pipeline_faild")
-        else:
-            print("pipeline working")
+            print("OCR pipeline failed")
+            sys.exit(1)
         model = ocr_pipeline.Embadding_model()
-        vactor_stor_db_ocr = ocr_pipeline.chroma_db_ocr(model,ocr_text)
-        print("data store in chroma db")
-
-        print("retriver ")
-
-
-        search= Similarity_search(
-            vector_db=vactor_stor_db_ocr,
-            query="what is Machine learning",
-            RETRIEVER_K=5,
-            MMR_LAMBDA=0.5,
-        )
-        #compression Search 
-        #LLm
-        llm = ChatMistralAI(
-            model = "mistral-large-latest"
-        )
-
-        Query ="What is Machine Learning?"
-        retriver_result = search.contextualCompressionRetriever(
-            llm=llm,
-            query=Query
-            )
-        
-        llm = ChatMistralAI(
-            model="mistral-large-latest",
-            temperature=0.3
-        )
-        for chunk ,doc in enumerate(retriver_result):
-            print("+"*80)
-            print(f"Result{1+chunk}")
-            print(" ")
-            print(doc.page_content)
-
-        
-
+        vector_db = ocr_pipeline.chroma_db_ocr(model, ocr_text)
+        print("Data stored in Chroma DB")
     else:
+        # Digital PDF branch
         digital_pdf_loader = digital_pipeline.pdf_loader()
-        digital_pdf_embadding  = digital_pipeline.embedding()
-        vactor_stor_db_PDF= digital_pipeline.chroma_db(embedding_model=digital_pdf_embadding, docs=digital_pdf_loader)
-        print("retriver ")
+        digital_pdf_embadding = digital_pipeline.embedding()
+        vector_db = digital_pipeline.chroma_db(digital_pdf_embadding, digital_pdf_loader)
+        print("Data stored in Chroma DB")
+    
+    # 4. Set up LLM and retriever (common to both branches)
+# After building vector_db and search object
+    llm = ChatMistralAI(model="mistral-large-latest", temperature=0.3)
+    search = Similarity_search(
+        vector_db=vector_db,
+        query="dummy",               # placeholder, not used in retrieval
+        RETRIEVER_K=5,
+        MMR_LAMBDA=0.5,
+    )
 
-        print("retriver ")
+    print("\n Ready to answer questions about the PDF. Type 'exit' to quit.\n")
 
+    while True:
+        user_query = input(" ?? Your question: ")
+        if user_query.lower() in ('exit', 'quit', 'q'):
+            print("Goodbye!")
+            break
+        if not user_query.strip():
+            continue
 
-        search = Similarity_search(
-            vactor_stor_db_PDF,
-            query="what is Machine learning",
-            RETRIEVER_K=5,
-            MMR_LAMBDA=0.5,
-        )
+        # 1. Get compressed documents for this query
+        docs = search.contextualCompressionRetriever(llm=llm, query=user_query)
 
+        # 2. Generate answer from those documents
+        generator = RAGGenerator(llm)
+        answer = generator.generate(docs, user_query)
 
-
-        llm = ChatMistralAI(
-            model="mistral-large-latest",
-            temperature=0.3
-        )
-
-        retriver_result = search.contextualCompressionRetriever(llm=llm,query="what is ML")
-
-        for i, doc in enumerate(retriver_result):
-            print("=" * 80)
-            print(f"Result {i + 1}")
-            print(doc.metadata)
-            print(doc.page_content[:300])   # first 300 characters
-
-
-        #LL
-        genarator =RAGGenerator(llm)
-        ans = genarator.generate(
-            retriver_result,
-            "what is ML"
-        )
-        print(ans.content)
-
-
-
-        
+        print("\n" + "="*80)
+        print(f"Q: {user_query}")
+        print(f" A: {answer.content}")
+        print("="*80 + "\n")
