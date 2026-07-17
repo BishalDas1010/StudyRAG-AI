@@ -1,174 +1,163 @@
 import streamlit as st
-from pathlib import Path
-import sys
-import tempfile
-import os
+import requests
+from datetime import datetime
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+# ---------- Configuration ----------
+API_URL = "http://localhost:8000/ask"
 
-from digital_pipeline import Pipeline
-from OCR_pipeline import Ocr_main
-from Similarity import Similarity_search
-from langchain_mistralai import ChatMistralAI
-from dotenv import load_dotenv
-from RAGGenerator import RAGGenerator
-
-load_dotenv()
-
-st.set_page_config(page_title="RAG PDF Chat", page_icon="📄", layout="wide")
-
-# ---------------- session state ----------------
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "vector_db" not in st.session_state:
-    st.session_state.vector_db = None
-if "pdf_processed" not in st.session_state:
-    st.session_state.pdf_processed = False
-if "is_scanned" not in st.session_state:
-    st.session_state.is_scanned = None
-if "pdf_name" not in st.session_state:
-    st.session_state.pdf_name = None
-
-# ---------------- sidebar ----------------
-with st.sidebar:
-    st.title("⚙️ Settings")
-    uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
-
-    st.subheader("Retriever Config")
-    retriever_k = st.slider("Retriever K", 1, 15, 5)
-    mmr_lambda = st.slider("MMR Lambda", 0.0, 1.0, 0.5, 0.05)
-    temperature = st.slider("LLM Temperature", 0.0, 1.0, 0.3, 0.05)
-
-    process_btn = st.button("🚀 Process PDF", use_container_width=True, type="primary")
-
-    if st.session_state.pdf_processed:
-        st.success(f"✅ Processed: {st.session_state.pdf_name}")
-        st.info("Type: " + ("Scanned (OCR)" if st.session_state.is_scanned is False else "Digital"))
-
-    if st.button("🗑️ Clear Chat", use_container_width=True):
-        st.session_state.messages = []
-        st.rerun()
-
-st.title("📄 RAG PDF Chat Assistant")
-st.caption("Upload a PDF, ask questions, get answers with sources")
-
-# ---------------- process pdf ----------------
-if process_btn:
-    if uploaded_file is None:
-        st.error("Upload a PDF first")
-    else:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(uploaded_file.getbuffer())
-            tmp_path = tmp.name
-
-        try:
-            digital_pipeline = Pipeline(tmp_path)
-            ocr_pipeline = Ocr_main(tmp_path)
-
-            is_scanned = digital_pipeline.detect_pdf_type()
-            st.session_state.is_scanned = is_scanned
-
-            if is_scanned is False:
-                status = st.status("Running OCR pipeline...", expanded=True)
-                status.write("Extracting text via OCR...")
-                ocr_text = ocr_pipeline.main()
-
-                if not ocr_text:
-                    status.update(label="OCR failed", state="error")
-                    st.error("OCR pipeline failed to extract text")
-                else:
-                    status.write("Building embeddings...")
-                    model = ocr_pipeline.Embadding_model()
-                    status.write("Storing in ChromaDB...")
-                    vector_db = ocr_pipeline.chroma_db_ocr(model, ocr_text)
-
-                    st.session_state.vector_db = vector_db
-                    st.session_state.pdf_processed = True
-                    st.session_state.pdf_name = uploaded_file.name
-                    status.update(label="Done! (OCR pipeline)", state="complete")
-            else:
-                status = st.status("Running digital PDF pipeline...", expanded=True)
-                status.write("Loading PDF...")
-                docs = digital_pipeline.pdf_loader()
-                status.write("Building embeddings...")
-                embedding_model = digital_pipeline.embedding()
-                status.write("Storing in ChromaDB...")
-                vector_db = digital_pipeline.chroma_db(embedding_model=embedding_model, docs=docs)
-
-                st.session_state.vector_db = vector_db
-                st.session_state.pdf_processed = True
-                st.session_state.pdf_name = uploaded_file.name
-                status.update(label="Done! (Digital pipeline)", state="complete")
-
-            st.rerun()
-        except Exception as e:
-            st.error(f"Processing failed: {e}")
-        finally:
-            os.unlink(tmp_path)
-
-# ---------------- chat history ----------------
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and "sources" in msg:
-            with st.expander(f"📚 Sources ({len(msg['sources'])})"):
-                for i, doc in enumerate(msg["sources"]):
-                    st.markdown(f"**Result {i + 1}**")
-                    if doc.metadata:
-                        st.caption(str(doc.metadata))
-                    st.text(doc.page_content[:500])
-                    st.divider()
-
-# ---------------- chat input ----------------
-if not st.session_state.pdf_processed:
-    st.info("👆 Upload and process a PDF from the sidebar to start chatting")
-
-query = st.chat_input(
-    "Ask a question about the PDF...",
-    disabled=not st.session_state.pdf_processed,
+st.set_page_config(
+    page_title="PDF Q&A Chat",
+    page_icon="📚",
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
-if query:
-    st.session_state.messages.append({"role": "user", "content": query})
-    with st.chat_message("user"):
-        st.markdown(query)
+# ---------- Custom CSS for chat bubbles ----------
+st.markdown("""
+<style>
+    .user-msg {
+        background: #5585b5;
+        color: #ffffff;
+        padding: 10px 15px;
+        border-radius: 18px 18px 5px 18px;
+        max-width: 80%;
+        margin-left: auto;
+        margin-bottom: 10px;
+        text-align: left;
+        word-wrap: break-word;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .assistant-msg {
+        background: #79c2d0;
+        color: #1a1a1a;
+        padding: 10px 15px;
+        border-radius: 18px 18px 18px 5px;
+        max-width: 80%;
+        margin-right: auto;
+        margin-bottom: 10px;
+        text-align: left;
+        word-wrap: break-word;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .msg-row {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 12px;
+    }
+    .avatar {
+        font-size: 28px;
+        margin-right: 8px;
+        margin-top: 4px;
+        flex-shrink: 0;
+    }
+    .avatar-right {
+        margin-left: 8px;
+        margin-right: 0;
+    }
+    .source-box {
+        background: #5585b5;
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-top: 6px;
+        font-size: 0.9em;
+    }
+    .timestamp {
+        font-size: 0.7em;
+        color: #888;
+        margin-top: 4px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Searching and generating answer..."):
-            try:
-                llm_retriever = ChatMistralAI(model="mistral-large-latest")
+# ---------- Sidebar ----------
+with st.sidebar:
+    st.header("ℹ️ About")
+    st.markdown("""
+    This app uses a **RAG** system to answer questions about a PDF.
+    - Vector store built at startup.
+    - Answers with source references.
+    """)
+    st.divider()
+    if st.button("🧹 Clear Chat History", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+    st.divider()
+    try:
+        health = requests.get("http://localhost:8000/health")
+        status = "✅ Connected" if health.status_code == 200 else "❌ Offline"
+    except:
+        status = "❌ Offline"
+    st.caption(f"API Status: {status}")
 
-                search = Similarity_search(
-                    vector_db=st.session_state.vector_db,
-                    query=query,
-                    RETRIEVER_K=retriever_k,
-                    MMR_LAMBDA=mmr_lambda,
-                )
-                retriever_result = search.contextualCompressionRetriever(
-                    llm=llm_retriever,
-                    query=query,
-                )
+# ---------- Session State ----------
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-                llm_gen = ChatMistralAI(model="mistral-large-latest", temperature=temperature)
-                generator = RAGGenerator(llm_gen)
-                answer = generator.generate(retriever_result, query)
+# ---------- Main Chat Display ----------
+st.title("📖 Ask Your PDF")
+st.caption("Type a question below about the content of the PDF.")
 
-                st.markdown(answer.content)
+# Display all messages
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        st.markdown(f"""
+        <div class="msg-row" style="justify-content: flex-end;">
+            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                <div class="user-msg">
+                    {msg["content"]}
+                </div>
+                <div class="timestamp">{msg.get("time", "")}</div>
+            </div>
+            <div class="avatar avatar-right">🧑</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        sources_html = "".join([
+            f'<div class="source-box">📄 Page {src.get("page", "unknown")}: {src.get("content", "")[:150]}...</div>'
+            for src in msg.get("sources", [])
+        ])
+        st.markdown(f"""
+        <div class="msg-row">
+            <div class="avatar">🤖</div>
+            <div style="display: flex; flex-direction: column;">
+                <div class="assistant-msg">
+                    {msg["content"]}
+                </div>
+                <div class="timestamp">{msg.get("time", "")}</div>
+                {sources_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-                with st.expander(f"📚 Sources ({len(retriever_result)})"):
-                    for i, doc in enumerate(retriever_result):
-                        st.markdown(f"**Result {i + 1}**")
-                        if doc.metadata:
-                            st.caption(str(doc.metadata))
-                        st.text(doc.page_content[:500])
-                        st.divider()
-
+# ---------- Chat Input ----------
+if prompt := st.chat_input("Ask something about the PDF..."):
+    # Add user message
+    now = datetime.now().strftime("%I:%M %p")
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt,
+        "time": now
+    })
+    
+    with st.spinner("Thinking..."):
+        try:
+            response = requests.post(API_URL, json={"query": prompt})
+            if response.status_code == 200:
+                data = response.json()
+                answer = data.get("answer", "No answer returned.")
+                sources = data.get("sources", [])
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": answer.content,
-                    "sources": retriever_result,
+                    "content": answer,
+                    "sources": sources,
+                    "time": datetime.now().strftime("%I:%M %p")
                 })
-            except Exception as e:
-                st.error(f"Error generating answer: {e}")
+            else:
+                st.error(f"API error {response.status_code}: {response.text}")
+        except requests.exceptions.ConnectionError:
+            st.error("❌ Cannot connect to FastAPI server. Make sure it's running at http://localhost:8000")
+        except Exception as e:
+            st.error(f"⚠️ Error: {e}")
+    
+    # Force a rerun so the assistant's reply appears immediately
+    st.rerun()
