@@ -1,10 +1,14 @@
-from fastapi import FastAPI, HTTPException
+import os
+import tempfile
+import shutil
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from pathlib import Path
 import sys
 from dotenv import load_dotenv
 from langchain_mistralai import ChatMistralAI
 from contextlib import asynccontextmanager
+import asyncio
 
 # Add project root to sys.path
 ROOT_DIR = Path(__file__).resolve().parent
@@ -13,16 +17,17 @@ if str(ROOT_DIR) not in sys.path:
 
 from digital_pipeline import Pipeline
 from OCR_pipeline import Ocr_main
-# Ocr is imported but not used; you can remove it if not needed
 from Similarity import Similarity_search
 from RAGGenerator import RAGGenerator
 
 load_dotenv()
 
-# ---------- Global objects ----------
+# Global objects
 vector_db = None
 llm = None
 search = None
+upload_lock = asyncio.Lock()          # prevent concurrent uploads
+CURRENT_PDF_PATH = None              # track the currently active PDF (optional)
 
 def build_vector_store(pdf_path: str):
     """Build the vector store based on PDF type."""
@@ -46,38 +51,66 @@ def build_vector_store(pdf_path: str):
     print("Vector store built successfully.")
     return db
 
-# ---------- Lifespan (startup/shutdown) ----------
+# Lifespan (startup/shutdown)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: build vector store and initialise LLM, search
     global vector_db, llm, search
-    pdf_path = "cs181-textbook.pdf"   # change as needed
-    try:
-        vector_db = build_vector_store(pdf_path)
-        llm = ChatMistralAI(model="mistral-large-latest", temperature=0.3)
-        search = Similarity_search(
-            vector_db=vector_db,
-            query="dummy",           # not used for retrieval
-            RETRIEVER_K=5,
-            MMR_LAMBDA=0.5,
-        )
-        print("Ready to answer questions.")
-    except Exception as e:
-        print(f" Startup error: {e}")
-        # Depending on your use case, you might want to raise or exit
-        raise RuntimeError("Failed to initialise the RAG system") from e
-    
-    yield   # The application runs here
-    
-    # Shutdown: (optional) cleanup resources if needed
+    # Optionally build a default vector store if you have a default PDF.
+    # For this fix, we skip building at startup and require an upload first.
+    llm = ChatMistralAI(model="mistral-large-latest", temperature=0.3)
+    print("LLM initialised. Upload a PDF to start asking questions.")
+    yield
     print("Shutting down...")
 
-# ---------- FastAPI app ----------
 app = FastAPI(
     title="PDF RAG API",
-    description="Ask questions about the PDF.",
+    description="Ask questions about a PDF. Upload a PDF first.",
     lifespan=lifespan
 )
+
+@app.post("/upload-pdf/")
+async def upload_pdf(file: UploadFile = File(...)):
+    global vector_db, search, CURRENT_PDF_PATH
+
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+
+    # Acquire lock to prevent concurrent rebuilds
+    async with upload_lock:
+        # Save the uploaded file to a temporary location
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                shutil.copyfileobj(file.file, tmp_file)
+                tmp_path = tmp_file.name
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+        finally:
+            await file.close()
+
+        # Build the vector store from the temporary PDF
+        try:
+            db = build_vector_store(tmp_path)
+            vector_db = db
+            CURRENT_PDF_PATH = tmp_path   # keep track for possible cleanup later
+            # Reinitialise the search object with the new vector store
+            search = Similarity_search(
+                vector_db=vector_db,
+                query="dummy",           # not used for retrieval
+                RETRIEVER_K=5,
+                MMR_LAMBDA=0.5,
+            )
+        except Exception as e:
+            # Clean up temporary file on failure
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
+
+    return {
+        "message": "PDF uploaded and processed successfully",
+        "filename": file.filename,
+        "pages": len(vector_db.get()["ids"]) if vector_db else 0   # rough page count
+    }
 
 class QueryRequest(BaseModel):
     query: str
@@ -89,7 +122,7 @@ class QueryResponse(BaseModel):
 @app.post("/ask", response_model=QueryResponse)
 async def ask_question(req: QueryRequest):
     if not search or not llm or not vector_db:
-        raise HTTPException(status_code=503, detail="System not initialised")
+        raise HTTPException(status_code=503, detail="No PDF has been uploaded yet. Please upload a PDF first.")
     
     query = req.query.strip()
     if not query:
@@ -119,7 +152,7 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "API:app",          # or "app:app" if the file is named app.py
+        "API:app",         
         host="0.0.0.0",
         port=8000,
         reload=True         # enables auto‑reload during development
