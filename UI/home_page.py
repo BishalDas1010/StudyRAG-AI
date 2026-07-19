@@ -3,7 +3,8 @@ import requests
 from datetime import datetime
 
 # ---- Configuration ----
-API_BASE = "http://localhost:8000"
+#API_BASE = "http://localhost:8000"
+API_BASE = "http://13.201.122.171:8000"
 UPLOAD_URL = f"{API_BASE}/upload-pdf/"
 ASK_URL = f"{API_BASE}/ask"
 HEALTH_URL = f"{API_BASE}/health"
