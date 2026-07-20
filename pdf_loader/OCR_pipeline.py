@@ -11,6 +11,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+import torch
 
 
 class Ocr:
@@ -151,7 +152,7 @@ class Ocr_main:
         embedding_model = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={
-                "device": "cuda"
+                 "device": "cuda" if torch.cuda.is_available() else "cpu"
             }
         )
 
